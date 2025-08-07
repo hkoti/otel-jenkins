@@ -1,0 +1,57 @@
+# ---- V11 - The Definitive Lean & Working Build ----
+
+# ---- Stage 1: The Builder ----
+# This stage builds the application and creates the final standalone output.
+FROM node:18-alpine AS builder
+
+WORKDIR /app
+
+# Disable Next.js telemetry during the build
+ENV NEXT_TELEMETRY_DISABLED 1
+
+COPY src/frontend/package*.json ./
+
+# Install ALL dependencies needed for the build
+RUN npm install --timeout=600000
+
+# Copy the entire frontend source code
+COPY src/frontend/ ./
+
+# Remove the cypress test directory that breaks the build
+RUN rm -rf ./cypress
+
+# Run the production build. This creates the .next/standalone directory.
+RUN npm run build
+
+
+# ---- Stage 2: The Production Runner ----
+# This stage uses the hyper-optimized standalone output. It is the correct approach.
+FROM node:18-alpine
+
+WORKDIR /app
+
+# Create and switch to a non-root user for security
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+USER appuser
+
+# Disable telemetry for the running application
+ENV NEXT_TELEMETRY_DISABLED 1
+# The standalone build runs on port 3000 by default
+ENV PORT 3000
+
+# --- Copy the essential, optimized artifacts from the builder stage ---
+
+# 1. Copy the entire self-contained standalone directory.
+#    This includes the server, a minimal node_modules, and compiled code.
+COPY --from=builder /app/.next/standalone ./
+
+# 2. Copy the public assets (images, etc.) and the static JS/CSS assets.
+COPY --from=builder /app/public ./public
+COPY --from=builder /app/.next/static ./.next/static
+
+
+EXPOSE 3000
+
+# The command to start the application. The standalone output creates its own
+# server.js that has instrumentation built-in.
+CMD ["node", "server.js"]
