@@ -85,21 +85,26 @@ def call(Map config) {
             stage('5. Deploy to Dev Kubernetes') {
                 steps {
                     withCredentials([file(credentialsId: 'kubeconfig-file', variable: 'KUBECONFIG')]) {
-                        if (config.helmHasDependencies) {
+                        // --- THIS IS THE FINAL FIX ---
+                        // All logic, including 'if' statements, must be wrapped
+                        // in a 'script' block inside a declarative stage.
+                        script {
+                            if (config.helmHasDependencies) {
+                                // We must use bat for Windows commands
+                                bat """
+                                    %HELM_EXE% repo add bitnami https://charts.bitnami.com/bitnami --force-update
+                                    %HELM_EXE% dependency update "%HELM_CHART_PATH%"
+                                """
+                            }
                             bat """
-                                %HELM_EXE% repo add bitnami https://charts.bitnami.com/bitnami --force-update
-                                %HELM_EXE% dependency update "%HELM_CHART_PATH%"
+                                %HELM_EXE% upgrade --install ${config.serviceName}-dev "%HELM_CHART_PATH%" ^
+                                --set image.tag=${env.BUILD_NUMBER} ^
+                                --namespace dev --create-namespace
                             """
                         }
-                        bat """
-                            %HELM_EXE% upgrade --install ${config.serviceName}-dev "%HELM_CHART_PATH%" ^
-                            --set image.tag=${env.BUILD_NUMBER} ^
-                            --namespace dev --create-namespace
-                        """
                     }
                 }
             }
-        }
         
         post {
             success {
