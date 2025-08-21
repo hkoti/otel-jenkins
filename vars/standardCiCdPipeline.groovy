@@ -20,20 +20,22 @@ def call(Map config) {
                     git url: 'https://github.com/hkoti/opentelemetry-demo.git', branch: 'main'
                 }
             }
-                        stage('2. SonarQube Code Analysis') {
+            stage('2. SonarQube Code Analysis') {
                 when { expression { return config.sonarProjectKey != null } }
                 steps {
                     script {
-                        // --- THIS IS THE NEW LOGIC ---
-                        // Check if the project is a Gradle project
+                        // We must handle Gradle as a special case
                         if (config.buildTool == 'gradle') {
-                            // For Gradle, we run the gradlew command directly
                             withCredentials([string(credentialsId: config.sonarCredentialId, variable: 'SONAR_LOGIN_TOKEN')]) {
-                                // We are running this inside the checkout directory, so relative paths are fine.
-                                bat "src\\ad\\gradlew.bat sonar -Dsonar.projectKey=${config.sonarProjectKey} -Dsonar.host.url=http://localhost:9000 -Dsonar.login=${SONAR_LOGIN_TOKEN}"
+                                // --- THIS IS THE FINAL FIX ---
+                                // 1. Use 'dir' to change into the correct subdirectory.
+                                // 2. Call gradlew from within that directory.
+                                dir('src/ad') {
+                                    bat "gradlew.bat sonar -Dsonar.projectKey=${config.sonarProjectKey} -Dsonar.host.url=http://localhost:9000 -Dsonar.login=${SONAR_LOGIN_TOKEN}"
+                                }
                             }
                         } else {
-                            // For all other project types, use the Docker-based scanner
+                            // The logic for all other services remains the same.
                             def safeWorkspace = env.WORKSPACE.replaceAll('\\\\', '/')
                             withCredentials([string(credentialsId: config.sonarCredentialId, variable: 'SONAR_LOGIN_TOKEN')]) {
                                 withSonarQubeEnv('sonar-server') {
