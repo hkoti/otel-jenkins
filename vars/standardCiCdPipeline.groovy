@@ -1,5 +1,3 @@
-// The Definitive Shared Library - Brace Matching Correction
-
 def call(Map config) {
     pipeline {
         agent any
@@ -45,14 +43,18 @@ def call(Map config) {
                     }
                 }
             }
+            // --- THIS STAGE IS NOW SIMPLIFIED ---
             stage('3. Build & Push Image') {
                 steps {
                     script {
                         bat "set DOCKER_CREDENTIALS_HELPER_DISABLED=1 && %DOCKER_EXE% build -t ${env.DOCKER_IMAGE_NAME}:${env.DOCKER_IMAGE_TAG} -f \"${env.DOCKERFILE_PATH}\" ."
+                        
                         withCredentials([usernamePassword(credentialsId: 'dockerhub-credentials', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
                             bat """
                                 %DOCKER_EXE% login -u %DOCKER_USER% -p %DOCKER_PASS%
+                                // 1. Push the specific, immutable tag ONLY.
                                 %DOCKER_EXE% push ${env.DOCKER_IMAGE_NAME}:${env.DOCKER_IMAGE_TAG}
+                                %DOCKER_EXE% logout
                             """
                         }
                     }
@@ -60,6 +62,8 @@ def call(Map config) {
             }
             stage('4. Trivy Vulnerability Scan') {
                 steps {
+                    // --- THIS STEP IS NOW MORE ROBUST ---
+                    // Scan the specific, immutable tag we just pushed.
                     bat """
                         %DOCKER_EXE% run --rm -v "%WORKSPACE%:/root/.cache/" ghcr.io/aquasecurity/trivy:latest image --exit-code 0 --severity HIGH,CRITICAL ${env.DOCKER_IMAGE_NAME}:${env.DOCKER_IMAGE_TAG}
                     """
@@ -75,28 +79,17 @@ def call(Map config) {
                                     %HELM_EXE% dependency update "%HELM_CHART_PATH%"
                                 """
                             }
+                            // Deploy the immutable build number tag.
                             bat """
                                 %HELM_EXE% upgrade --install ${config.serviceName}-dev "%HELM_CHART_PATH%" ^
-                                --set image.tag=${env.BUILD_NUMBER} ^
+                                --set image.tag=${env.DOCKER_IMAGE_TAG} ^
                                 --namespace dev --create-namespace
-                            """
-                        }
-                    } // <-- THIS BRACE WAS MISSING
-                }
-            }
-            stage('6. Tag as Latest') {
-                steps {
-                    script {
-                        withCredentials([usernamePassword(credentialsId: 'dockerhub-credentials', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
-                            bat """
-                                %DOCKER_EXE% tag ${env.DOCKER_IMAGE_NAME}:${env.DOCKER_IMAGE_TAG} ${env.DOCKER_IMAGE_NAME}:latest
-                                %DOCKER_EXE% push ${env.DOCKER_IMAGE_NAME}:latest
-                                %DOCKER_EXE% logout
                             """
                         }
                     }
                 }
             }
+            // The 'Tag as Latest' stage has been REMOVED.
         }
         post {
             success {
