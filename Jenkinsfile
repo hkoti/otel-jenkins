@@ -1,5 +1,3 @@
-// The Jenkinsfile for Day 4 - Definitive Version with Absolute Paths & Full Stages
-
 pipeline {
     agent any
 
@@ -49,9 +47,7 @@ pipeline {
         stage('3. Build & Push Docker Image') {
             steps {
                 script {
-                    // --- THIS IS THE FINAL FIX ---
-                    // We explicitly set the environment variable right before the command that needs it.
-                    // This bypasses any inheritance issues with the script block.
+                   
                     bat "set DOCKER_CREDENTIALS_HELPER_DISABLED=1 && ${env.DOCKER_EXE} build -t ${env.DOCKER_IMAGE_NAME}:${env.BUILD_NUMBER} -f \"${env.DOCKERFILE_PATH}\" ."
 
                     withCredentials([usernamePassword(credentialsId: 'dockerhub-credentials', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
@@ -83,20 +79,14 @@ pipeline {
                     """
                 }
                 
-                // After the scan is complete, we archive the report.
-                // This makes the JSON file available from the Jenkins build page.
                 archiveArtifacts artifacts: 'trivy-report.json', fingerprint: true
             }
         }
         
                 stage('5. Deploy to Dev Kubernetes') {
             steps {
-                // --- THIS IS THE FINAL FIX ---
-                // We use the 'withCredentials' block to securely access our kubeconfig file.
-                // It makes the file available at a temporary path and sets the KUBECONFIG
-                // environment variable to point to it. Helm and kubectl automatically use this variable.
                 withCredentials([file(credentialsId: 'kubeconfig-file', variable: 'KUBECONFIG')]) {
-                    // This block executes with the KUBECONFIG environment variable set.
+
                     bat """
                         %HELM_EXE% upgrade --install frontend-dev "%HELM_CHART_PATH%" ^
                         --set image.tag=%BUILD_NUMBER% ^
